@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import { useNavigation } from '@react-navigation/native';
-
 import { database } from '../../Database/database';
 import { encryptPassword } from '../../Database/schema';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import User from 'react-native-vector-icons/FontAwesome'
+
 const LoginPage = () => {
 
   const navigation = useNavigation();
@@ -118,23 +118,22 @@ const LoginPage = () => {
       Alert.alert("Both Email and Password are required");
       return;
     }
-  
+
     // Validate email and password
     if (!handleValidation()) {
       console.log('Form is invalid');
       return;
     }
-  
+
     try {
       await database.write(async () => {
         const createUser = await userCollection.create((user) => {
-          user.email = encryptPassword(form.email),
-          user.password = encryptPassword(form.password)
+          user.email = (form.email),
+          user.password = (form.password)
           user.profilePic = form.profilePic
         })
-        mySync();
       })
-      setForm({ email: '', password: '' , profilePic: null})
+      setForm({ email: '', password: '', profilePic: null })
       const fetchUsers = await userCollection.query();
       // console.log('fetch.........', fetchUsers)
       setForm(fetchUsers)
@@ -184,6 +183,7 @@ const LoginPage = () => {
       profilePic: null,
     }));
   };
+
 
 
   return (

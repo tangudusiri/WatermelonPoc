@@ -12,16 +12,25 @@ import { database } from '../../Database/database';
 import { synchronize } from '@nozbe/watermelondb/sync'
 import NetInfo from '@react-native-community/netinfo'
 
+const uniqueArray = (arr) => arr.filter((value, index) => {
+  const _value = JSON.stringify(value);
+  return index === arr.findIndex(obj => {
+    return JSON.stringify(obj) === _value;
+  });
+});
+
+
 const TodoPage = () => {
   const [showCard, setShowCard] = useState(false);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [notes, setNotes] = useState([]);
   const [type, setType] = useState('new');
-  const [selectedId, setSelectedId] = useState('')
+  const [selectedId, setSelectedId] = useState('');
 
   useEffect(() => {
-    getNotes();
+    // getNotes();
+    // mySync();
 
     const unsubscribe = NetInfo.addEventListener(state => {
       console.log("Connection type", state.type);
@@ -39,18 +48,17 @@ const TodoPage = () => {
 
   const getNotes = () => {
     const notesData = database.collections.get('notes');
-    console.log("NotesData.....", notesData);
+    // console.log("NotesData.....", notesData);
     notesData
       .query()
       .observe()
       .forEach(item => {
-        console.log('item===>', item);
+        // console.log('item===>', item);
         let temp = [];
         item.forEach(data => {
           temp.push(data._raw);
         });
         setNotes(temp);
-        mySync()
       });
   };
 
@@ -61,14 +69,16 @@ const TodoPage = () => {
         note.desc = desc;
         note.needs_sync = true;
       });
-      console.log('saved data---->', newPost);
+      // console.log('saved data---->', newPost);
       setTitle('');
       setDesc('');
       setShowCard(false);
-      getNotes();
-      mySync()
+      // getNotes();
+      // mySync()
     });
   };
+
+
 
   const updateNote = async () => {
     await database.write(async () => {
@@ -81,8 +91,8 @@ const TodoPage = () => {
       setTitle('')
       setDesc('')
       setShowCard(false)
-      getNotes()
-      mySync()
+      // getNotes()
+      // mySync()
     })
   };
 
@@ -90,8 +100,8 @@ const TodoPage = () => {
     await database.write(async () => {
       const note = await database.get('notes').find(id);
       await note.destroyPermanently();
-      getNotes();
-      mySync()
+      // getNotes();
+      // mySync()
     });
   };
 
@@ -101,102 +111,81 @@ const TodoPage = () => {
         const allNotes = await database.collections.get('notes').query().fetch();
 
         await Promise.all(allNotes.map(task => task?._raw?._status === 'synced' ? task.destroyPermanently() : null));
-        console.log('Local data deleted after synchronization');
+        // console.log('Local data deleted after synchronization');
       });
     } catch (error) {
       console.error('Error deleting local data:', error);
     }
   }
 
-  let isSyncing = false
-
-  // async function mySync() {
-  //   if (isSyncing) {
-  //     console.log('Synchronization is already in progress.');
-  //     return;
-  //   }
-  //   isSyncing = true;
-  //   try {
-  //     await synchronize({
-  //       database,
-  //       pullChanges: async ({ lastPulledAt, schemaVersion, migration }) => {
-  //         const { changes, timestamp } = await mockPullFromDatabase({
-  //           lastPulledAt,
-  //           schemaVersion,
-  //           migration,
-  //         });
-  //         console.log("Pull changes------>", changes);
-  //         return { changes, timestamp };
-  //       },
-  //       pushChanges: async ({ changes, lastPulledAt }) => {
-  //         await mockPushToDatabase({ changes, lastPulledAt });
-  //       },
-  //       migrationsEnabledAtVersion: 2,
-  //     });
-
-  //     // const networkState = await NetInfo.fetch();
-  //     // if (networkState.isConnected) {
-  //     //   // Only delete local data if there is an active internet connection
-  //     //   await deleteLocalData();
-  //     // }
-  //   } catch (error) {
-  //     console.error('Error during synchronization:', error);
-  //   } finally {
-  //     isSyncing = false;
-  //   }
-  // }
-
-
-  async function mockPullFromDatabase({ lastPulledAt, schemaVersion, migration }) {
-    const changes = {
-      notes: { created: [], updated: [], deleted: [] },
-    };
-    const timestamp = new Date().getTime();
-    console.log('Pulling changes------->', JSON.stringify(changes));
-    return { changes, timestamp };
-  }
-
-  async function mockPushToDatabase({ changes, lastPulledAt }) {
-    console.log('Pushing changes------->', JSON.stringify(changes), 'Last pulled at:', lastPulledAt);
-  }
 
   async function mySync() {
-    await synchronize({
-      database,
-      pullChanges: async ({ lastPulledAt, schemaVersion, migration }) => {
-        // const urlParams = `last_pulled_at=${lastPulledAt}&schema_version=${schemaVersion}&migration=${encodeURIComponent(
-        //   JSON.stringify(migration),
-        // )}`
-        const response = await fetch(`https://knowing-gibbon-selected.ngrok-free.app/api/Note/pull/1711433419`)
-        if (!response.ok) {
-          throw new Error(await response.text())
-        }
+    let isSyncing = false;
+    if (isSyncing) {
+      console.log("Synchronization is already in progress. Aborting this attempt.");
+      return;
+    }
+    isSyncing = true;
+    // console.log("Starting synchronization...");
+    try {
+      await synchronize({
+        database,
+        pullChanges: async ({ lastPulledAt, schemaVersion, migration }) => {
+          // const urlParams = `last_pulled_at=${lastPulledAt}&schema_version=${schemaVersion}&migration=${encodeURIComponent(
+          //   JSON.stringify(migration),
+          // )}`
+          const response = await fetch(`https://8fbe-2409-40f0-44-6800-eccf-f5fe-9313-b0f4.ngrok-free.app/api/Note/pull/${lastPulledAt || 0}`)
+          if (!response.ok) {
+            throw new Error(await response.text())
+          }
 
-        console.log('Checking Pull Response---->', JSON.stringify(response));
+          const res = await response.json();
 
-        const { changes, timestamp } = await response.json()
-        console.log("Changes consoling----->", JSON.stringify(changes));
-        console.log("Checking timestamp====>", timestamp)
-        setNotes(previousNotes => {
-          const updatedNotes = [...previousNotes, ...changes.notes.created];
-          console.log("Updated Notes------>",updatedNotes);
-          return updatedNotes;
-        });
-        return { changes, timestamp }
-      },
+          let { changes, } = res;
+          const timestamp = res.lastPulledAt;
 
-      pushChanges: async ({ changes, lastPulledAt }) => {
-        const response = await fetch(`https://knowing-gibbon-selected.ngrok-free.app/api/Note/push/1711433419`, {
-          method: 'POST',
-          body: JSON.stringify(changes),
-        })
-        console.log("Push changes Response===>", response);
-        if (!response.ok) {
-          throw new Error(await response.text())
-        }
-      },
-      migrationsEnabledAtVersion: 1,
-    })
+          console.log("Changes consoling----->", JSON.stringify(changes));
+          // console.log("Checking timestamp====>", timestamp, lastPulledAt)
+          return { changes, timestamp }
+        },
+
+        pushChanges: async ({ changes, lastPulledAt }) => {
+          const body = {
+            changes: {
+              created: changes.notes.created.map(record => ({
+                id: record.id,
+                title: record.title,
+                description: record.description,
+              })),
+              updated: changes.notes.updated.map(record => ({
+                id: record.id,
+                title: record.title,
+                description: record.description,
+              })),
+              deleted: changes.notes.deleted,
+            },
+            last_pulled_at: lastPulledAt,
+          };
+          const response = await fetch(`https://8fbe-2409-40f0-44-6800-eccf-f5fe-9313-b0f4.ngrok-free.app/api/Note/push/${lastPulledAt}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+          });
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+        },
+        migrationsEnabledAtVersion: 1,
+      });
+      getNotes();
+    } catch (error) {
+      console.error('Error during synchronization:', error);
+    } finally {
+      isSyncing = false;
+    }
   }
 
   return (
@@ -287,97 +276,101 @@ const TodoPage = () => {
           </TouchableOpacity>
         </View>
       )}
-      <FlatList
-        data={notes}
-        renderItem={({ item, index }) => {
-          console.log("items check=====>", item);
-          return (
-            <View
-              style={{
-                width: '90%',
-                height: 80,
-                alignSelf: 'center',
-                borderWidth: 0.5,
-                paddingLeft: 20,
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingRight: 10,
-              }}>
-              <View>
-                <Text style={{ fontSize: 16, color: 'black' }}>{item.title}</Text>
-                <Text style={{ fontSize: 16, color: 'black' }} >{item.description}</Text>
-              </View>
-              <View>
-                <Text
-                  style={{ color: 'red' }}
-                  onPress={() => {
-                    deleteNote(item.id);
+      {!showCard && (
+        <>
+          <FlatList
+            data={uniqueArray(notes)}
+            renderItem={({ item, index }) => {
+              return (
+                <View
+                  style={{
+                    width: '90%',
+                    height: 80,
+                    alignSelf: 'center',
+                    borderWidth: 0.5,
+                    paddingLeft: 20,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingRight: 10,
                   }}>
-                  DELETE
-                </Text>
-                <Text
-                  style={{ color: 'blue', marginTop: 10 }}
-                  onPress={() => {
-                    setType('edit');
-                    setTitle(item.note);
-                    setDesc(item.desc);
-                    setSelectedId(item.id)
-                    setShowCard(true);
-                  }}>
-                  EDIT
-                </Text>
-              </View>
-            </View>
-          );
-        }}
-        contentContainerStyle={{ paddingBottom: 180 }}
-        keyExtractor={(item, index) => index.toString()}
-      />
-      <TouchableOpacity
-        style={{
-          width: '100%',
-          bottom: 30,
-          height: 60,
-          backgroundColor: 'purple',
-          position: 'absolute',
-          alignSelf: 'center',
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-        onPress={() => {
-          setShowCard(true);
-        }}>
-        <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>Add New Note</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={{
-          width: '100%',
-          bottom: 100,
-          height: 60,
-          backgroundColor: 'orange',
-          position: 'absolute',
-          alignSelf: 'center',
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-        onPress={() => {
-          // Confirm with the user before deleting
-          Alert.alert(
-            "Delete Synced Data",
-            "Are you sure you want to delete all synced notes from your device?",
-            [
-              {
-                text: "Cancel",
-                style: "cancel"
-              },
-              { text: "OK", onPress: () => deleteLocalData() }
-            ]
-          );
-        }}>
-        <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>Delete Synced Data</Text>
-      </TouchableOpacity>
-
+                  <View>
+                    <Text style={{ fontSize: 16, color: 'black' }}>{`${item.id} - ${index + 1}`}</Text>
+                    <Text style={{ fontSize: 16, color: 'black' }}>{item.title}</Text>
+                    <Text style={{ fontSize: 16, color: 'black' }} >{item.description}</Text>
+                  </View>
+                  <View>
+                    <Text
+                      style={{ color: 'red' }}
+                      onPress={() => {
+                        deleteNote(item.id);
+                      }}>
+                      DELETE
+                    </Text>
+                    <Text
+                      style={{ color: 'blue', marginTop: 10 }}
+                      onPress={() => {
+                        setType('edit');
+                        setTitle(item.note);
+                        setDesc(item.desc);
+                        setSelectedId(item.id)
+                        setShowCard(true);
+                      }}>
+                      EDIT
+                    </Text>
+                  </View>
+                </View>
+              );
+            }}
+            extraData={{}}
+            contentContainerStyle={{ paddingBottom: 180 }}
+            keyExtractor={(item) => item.id.toString()}
+          />
+          <TouchableOpacity
+            style={{
+              width: '100%',
+              bottom: 30,
+              height: 60,
+              backgroundColor: 'purple',
+              position: 'absolute',
+              alignSelf: 'center',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+            onPress={() => {
+              setShowCard(true);
+            }}>
+            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>Add New Note</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              width: '100%',
+              bottom: 100,
+              height: 60,
+              backgroundColor: 'orange',
+              position: 'absolute',
+              alignSelf: 'center',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+            onPress={() => {
+              // Confirm with the user before deleting
+              Alert.alert(
+                "Delete Synced Data",
+                "Are you sure you want to delete all synced notes from your device?",
+                [
+                  {
+                    text: "Cancel",
+                    style: "cancel"
+                  },
+                  { text: "OK", onPress: () => deleteLocalData() }
+                ]
+              );
+            }}>
+            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>Delete Synced Data</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </SafeAreaView>
   );
 };

@@ -6,5 +6,5 @@ export default class User extends Model {
 
     @field('email') email;
     @field('password') password;
-    @field('profile_pic') profilePic;
+    @field('profilePic') profilePic;
 }

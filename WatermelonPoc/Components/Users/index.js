@@ -1,14 +1,28 @@
-import { StyleSheet, Text, View, FlatList, Image, TouchableOpacity, Button, ScrollView } from 'react-native'
+import {
+  StyleSheet,
+  Text,
+  View,
+  FlatList,
+  Image,
+  TouchableOpacity,
+  TextInput,
+  RefreshControl,
+} from 'react-native'
 import React, { useEffect, useState } from 'react'
 import { database } from '../../Database/database'
 import { decryptPassword } from '../../Database/schema'
 import NetInfo from '@react-native-community/netinfo';
-import { synchronize } from '@nozbe/watermelondb/sync'
+import { synchronize } from '@nozbe/watermelondb/sync';
+import DeleteIocn from 'react-native-vector-icons/MaterialIcons';
+import EditIcon from 'react-native-vector-icons/MaterialIcons'
 
 const UserPage = ({ route, navigation }) => {
   // const user = route.params.userData
   const [users, setUsers] = useState([])
   const [userCount, setUserCount] = useState(0)
+  const [editedUser, setEditedUser] = useState({});
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false)
 
   // console.log('users..........', users)
   const userCollection = database.collections.get('users');
@@ -22,20 +36,83 @@ const UserPage = ({ route, navigation }) => {
       }
 
     });
-
+     fetchData();
     return () => {
       unsubscribe();
     };
   }, [])
-  
+
+  const fetchData = async () => {
+    setRefreshing(true);
+    await fetchUsers();
+    mySync()
+    setRefreshing(false);
+  };
+
   const fetchUsers = async () => {
     try {
       const userLength = await userCollection.query().fetchCount();
-      setUserCount(userLength)
+      setUserCount(userLength);
       const allUsers = await userCollection.query().fetch();
       setUsers(allUsers);
     } catch (error) {
       console.log('Error fetching users:', error);
+    }
+  };
+
+  const handleInputs = (name, value) => {
+    console.log('inputs........', name, value)
+    setEditedUser(prevUser => ({
+      ...prevUser,
+      [name]: value
+    }));
+  }
+
+  const toggleEdit = (userId) => {
+    setEditingUserId(userId);
+    const userToEdit = users.find(user => user.id === userId);
+    console.log('userToEdit........', userToEdit)
+    setEditedUser(userToEdit);
+  };
+
+  const saveChanges = async () => {
+    try {
+      // console.log('before edit......', editedUser)
+      await database.write(async () => {
+        const updateRecord = await userCollection.find(editingUserId)
+        // console.log('updatedRecord..........', updateRecord)
+        await updateRecord.update((user) => {
+          user.email = editedUser.email;
+          user.password = editedUser.password;
+        });
+        // console.log('after edit......', updateRecord)
+      });
+
+      setEditingUserId(null);
+      await fetchUsers(); // Refresh user list after saving changes
+      mySync()
+    } catch (error) {
+      console.log('Error saving changes:', error);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingUserId(null);
+    setEditedUser({});
+  };
+
+  const deleteUser = async (userId) => {
+    console.log('userId..........', userId)
+    try {
+      await database.write(async () => {
+        const user = await userCollection.find(userId);
+        await user.markAsDeleted();
+        setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
+        await fetchUsers(); // Fetch users again after deletion
+        mySync()
+      });
+    } catch (error) {
+      console.error('Error deleting user:', error);
     }
   };
 
@@ -50,8 +127,8 @@ const UserPage = ({ route, navigation }) => {
     try {
       await synchronize({
         database,
-        pullChanges: async ({lastPulledAt}) => {
-          const response = await fetch(`https://8fbe-2409-40f0-44-6800-eccf-f5fe-9313-b0f4.ngrok-free.app/api/Users/pull/${lastPulledAt || 0}`)
+        pullChanges: async ({ lastPulledAt }) => {
+          const response = await fetch(`https://e378-103-169-83-124.ngrok-free.app/api/Collection/pull/${lastPulledAt || 0}`)
           if (!response.ok) {
             throw new Error(await response.text())
           }
@@ -61,37 +138,55 @@ const UserPage = ({ route, navigation }) => {
 
           const { changes, } = res;
           const timestamp = res.lastPulledAt;
-          console.log("Changes consoling----->", JSON.stringify(changes));
+          console.log("Changes consoling----->", JSON.stringify(changes), timestamp);
           // console.log("Checking timestamp====>", timestamp,lastPulledAt)
           return { changes, timestamp }
 
         },
 
         pushChanges: async ({ changes, lastPulledAt }) => {
-          console.log('changes...........',changes)
+          console.log('chamges..........', changes)
+
           const body = {
+            // request: 'sync',
             changes: {
-              created: changes.users.created.map(record => ({
-                id: record.id,
-                email: record.email,
-                password: record.password,
-                profilePic: record.profilePic || '',
-              })),
-              updated: changes.users.updated.map(record => ({
-                id: record.id,
-                email: record.email,
-                password: record.password,
-                profilePic:  record.profilePic,
-              })),
-              deleted: changes.users.deleted,
+              notes: {
+                created: changes.notes.created.map(record => ({
+                  id: record.id,
+                  title: record.title,
+                  description: record.description,
+                })),
+                updated: changes.notes.updated.map(record => ({
+                  id: record.id,
+                  title: record.title,
+                  description: record.description,
+                })),
+                deleted: changes.notes.deleted,
+              },
+              users: {
+                created: changes.users.created.map(record => ({
+                  id: record.id,
+                  email: record.email,
+                  password: record.password,
+                  profilePic: record.profilePic || '',
+                })),
+                updated: changes.users.updated.map(record => ({
+                  id: record.id,
+                  email: record.email,
+                  password: record.password,
+                  profilePic: record.profilePic || '',
+                })),
+                deleted: changes.users.deleted,
+              }
             },
             last_pulled_at: lastPulledAt,
           };
-          // console.log('Request Body:', JSON.stringify(body));
-          if (!changes || !changes.users) {
+          console.log('Request Body:', JSON.stringify(body));
+
+          if (!changes || !changes.users || !changes.notes) {
             throw new Error('Invalid changes object');
           }
-          const response = await fetch(`https://8fbe-2409-40f0-44-6800-eccf-f5fe-9313-b0f4.ngrok-free.app/api/Users/push/${lastPulledAt}`, {
+          const response = await fetch(`https://e378-103-169-83-124.ngrok-free.app/api/Collection/push/${lastPulledAt}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -106,22 +201,23 @@ const UserPage = ({ route, navigation }) => {
         },
         migrationsEnabledAtVersion: 1,
       });
-      fetchUsers();
-      deleteLocalData()
+      await fetchUsers()
+      // await deleteLocalData()
     } catch (error) {
       console.log('Error during synchronization:', error);
     } finally {
       isSyncing = false;
     }
-  }
+  };
 
   async function deleteLocalData() {
     try {
       await database.write(async () => {
         const allUsers = await database.collections.get('users').query().fetch();
 
-        await Promise.all(allUsers.map(task => task?._raw?._status === 'synced' ? task.destroyPermanently() : null));
-        // console.log('Local data deleted after synchronization');
+        await Promise.all(allUsers.map(task => task?._raw?._status === '' ? task.markAsDeleted() : null));
+        console.log('Local data deleted after synchronization', allUsers);
+        printDatabaseContents()
       });
     } catch (error) {
       console.error('Error deleting local data:', error);
@@ -130,26 +226,74 @@ const UserPage = ({ route, navigation }) => {
 
   const renderUserItem = ({ item }) => {
     // console.log('item............', item)
-    const isValidUri = typeof item.profilePic === 'string' && (item.profilePic.startsWith("file://") || item.profilePic.startsWith("http://") || item.profilePic.startsWith("https://") || item.profilePic.startsWith("data:image/jpeg;base64"));
+    const addBase64Prefix = (base64String) => {
+      return `data:image/jpeg;base64,${base64String}`;
+    };
+
+    const isEditing = item.id === editingUserId;
+
+
+    // const isValidUri = typeof item.profilePic === 'string';
 
     return (
       <View style={styles.userItemContainer}>
         <View style={styles.userItem}>
-          {isValidUri ? (
-            <View style={styles.profilePicContainer}>
-              <Image source={{ uri: item?.profilePic }} style={styles.profilePic} />
+          <View style={{ flexDirection: 'row' }}>
+            {item.profilePic ? (
+              <View style={styles.profilePicContainer}>
+                <Image source={{ uri: item.profilePic.startsWith('data:image/jpeg;base64') ? item.profilePic : addBase64Prefix(item.profilePic) }} style={styles.profilePic} />
+              </View>
+            ) : (
+              <View style={styles.profilePicContainer}>
+                <Text style={styles.imgText}>
+                  {(item?.email).slice(0, 1).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <View style={styles.userInfo}>
+              {isEditing ?
+                <>
+                  <TextInput
+                    style={styles.input}
+                    value={editedUser.email || ''}
+                    onChangeText={email => handleInputs('email', email)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={editedUser.password || ''}
+                    onChangeText={password => handleInputs('password', password)}
+                  />
+                </> :
+                <>
+                  <Text>Email: {item.email.length > 20 ? `${item.email.slice(0, 18)}...` : item.email}</Text>
+                  <Text>Password: {(item.password)}</Text>
+                  <Text>id: {(item.id)}</Text>
+
+                </>
+              }
+
             </View>
-          ) : (
-            <View style={styles.profilePicContainer}>
-              <Text style={styles.imgText}>
-                {(item?.email).slice(0, 1).toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <View style={styles.userInfo}>
-            <Text>Email: {(item.email)}</Text>
-            <Text>Password: {(item.password)}</Text>
+
           </View>
+          {isEditing ?
+            <View style={{ flexDirection: 'column' }}>
+              <TouchableOpacity onPress={saveChanges}>
+                <Text>Save</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={cancelEdit}>
+                <Text>Cancel</Text>
+              </TouchableOpacity>
+            </View> :
+            <View>
+              <TouchableOpacity onPress={() => deleteUser(item.id)}>
+                <DeleteIocn name='delete' size={20} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => toggleEdit(item.id)}>
+                <EditIcon name='edit' size={20} />
+              </TouchableOpacity>
+
+            </View>
+          }
         </View>
       </View>
 
@@ -174,17 +318,19 @@ const UserPage = ({ route, navigation }) => {
   };
 
   // Call the function to print database contents
-  printDatabaseContents();
+  // printDatabaseContents();
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
       <Text style={styles.header}>Users ({userCount})</Text>
       <FlatList
         data={users}
         renderItem={renderUserItem}
         keyExtractor={item => item.id.toString()}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchData}/>}
       />
-    </ScrollView>
+    </View>
   )
 }
 
@@ -207,6 +353,8 @@ const styles = StyleSheet.create({
   userItem: {
     flexDirection: 'row',
     flex: 1,
+    justifyContent: 'space-between',
+    alignItems: 'center',
     borderBottomWidth: 1,
     borderColor: '#ccc',
     paddingVertical: 10,

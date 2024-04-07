@@ -20,7 +20,7 @@ export const migrations = schemaMigrations({
           columns: [
             { name: 'email', type: 'string' },
             { name: 'password', type: 'string' },
-            { name: 'profile_pic', type: 'string' },
+            { name: 'profilePic', type: 'string' },
           ],
         }),
       ],

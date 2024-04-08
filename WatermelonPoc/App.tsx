@@ -5,6 +5,7 @@ import LoginPage from './Components/LoginPage';
 import UserPage from './Components/Users';
 import TodoPage from './Components/TodoTask';
 import MainPage from './Components';
+import AssupolLogin from './Components/AssupolLogin';
 
 const Stack = createStackNavigator();
 
@@ -12,8 +13,11 @@ function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName="MainPage">
-        
         <Stack.Screen
+          name='AssupolLogin'
+          component={AssupolLogin}
+        />
+        {/* <Stack.Screen
           name="MainPage"
           component={MainPage}
           options={{title: 'MainPage'}}
@@ -32,7 +36,7 @@ function App() {
           name="Todo"
           component={TodoPage}
           options={{title: 'Todo'}}
-        />
+        /> */}
       </Stack.Navigator>
     </NavigationContainer>
   );

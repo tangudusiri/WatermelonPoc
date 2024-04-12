@@ -6,16 +6,23 @@ import UserPage from './Components/Users';
 import TodoPage from './Components/TodoTask';
 import MainPage from './Components';
 import AssupolLogin from './Components/AssupolLogin';
+import QuickQuote from './Components/QuickQuote';
+
+import { GluestackUIProvider } from '@gluestack-ui/themed';
+import { config } from '@gluestack-ui/config';
+import SendQuote from './Components/SendQuote';
+import SendQuoteLanding from './Components/SendQuoteLanding';
 
 const Stack = createStackNavigator();
 
 function App() {
   return (
     <NavigationContainer>
+      <GluestackUIProvider config={config}>
       <Stack.Navigator initialRouteName="MainPage">
         <Stack.Screen
           name='AssupolLogin'
-          component={AssupolLogin}
+          component={SendQuote}
         />
         {/* <Stack.Screen
           name="MainPage"
@@ -38,6 +45,7 @@ function App() {
           options={{title: 'Todo'}}
         /> */}
       </Stack.Navigator>
+      </GluestackUIProvider>
     </NavigationContainer>
   );
 }
